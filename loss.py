@@ -5,6 +5,15 @@ from torch.distributions.kl import kl_divergence
 import torch
 
 def ELBO_loss(y, t, mu, sigma, beta):
+    # Ensure all tensors are on the same device
+    device = y.device
+    if t.device != device:
+        t = t.to(device)
+    if mu.device != device:
+        mu = mu.to(device)
+    if sigma.device != device:
+        sigma = sigma.to(device)
+    
     # log[p(x|z)]
     likelihood = -binary_cross_entropy(y, t, reduction="none")
     likelihood = likelihood.view(likelihood.size(0), -1).sum(1)
@@ -12,8 +21,9 @@ def ELBO_loss(y, t, mu, sigma, beta):
     # Kullback-Leibler divergence between approximate posterior, q(z|x)
     # and prior p(z) = N(z | mu, sigma*I).
     
-    n_mu = torch.Tensor([0])
-    n_sigma = torch.Tensor([1])
+    # Create normal distributions on the same device
+    n_mu = torch.tensor([0.], device=device)
+    n_sigma = torch.tensor([1.], device=device)
 
     p = Normal(n_mu, n_sigma)
     q = Normal(mu, sigma)
@@ -25,4 +35,4 @@ def ELBO_loss(y, t, mu, sigma, beta):
     elbo = torch.mean(likelihood) - (beta * torch.mean(kl_div))  # Equation (3)
 
 
-    return -elbo, kl_div.mean(), beta * kl_div.mean()  
+    return -elbo, kl_div.mean(), beta * kl_div.mean()
