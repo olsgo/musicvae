@@ -34,6 +34,13 @@ class HierarchicalDecoder(nn.Module):
         self.tanh = nn.Tanh()
         
     def forward(self, z, input_sequence):
+        # Ensure inputs are on the same device as the model
+        device = next(self.parameters()).device
+        if z.device != device:
+            z = z.to(device)
+        if input_sequence.device != device:
+            input_sequence = input_sequence.to(device)
+            
         # input_sequence : [BATCH_SIZE, seq_length, class][256, 64, 27]
         # z: [BATCH_SIZE,LATENT_DIM]
 
@@ -53,29 +60,30 @@ class HierarchicalDecoder(nn.Module):
         z = z.permute(1,0,2) # initial state expected to have shape of [num_layers, BATCH_SIZE, conductor_hidden_size] 
     
         # get embeddings from conductor
-        conductor_input = torch.zeros(size=(batch_size, 1, self.latent_dim))
-        embeddings = torch.empty(batch_size,16,self.latent_dim)
+        conductor_input = torch.zeros(size=(batch_size, 1, self.latent_dim), device=device)
+        embeddings_list = []
         state = (z,z)
 
         outputs = []
-        previous = torch.zeros((batch_size, self.output_size))
+        previous = torch.zeros((batch_size, self.output_size), device=device)
 
         for i in range(16): # U=16
             conductor_out, state = self.conductor_rnn(conductor_input,state)
 
             conductor_out = self.fc_1(conductor_out)
            
-            embeddings[:,i,:] = conductor_out[:,0]
+            # Store embedding without in-place operation
+            embeddings_list.append(conductor_out[:,0])
 
             conductor_input = conductor_out
 
             output_decoder = []
 
-            init = torch.zeros(size=(2, batch_size, self.bottom_decoder_hidden_size))
+            init = torch.zeros(size=(2, batch_size, self.bottom_decoder_hidden_size), device=device)
             
             state2 = (init,init)
             for _ in range(4): # T / U, loop through each subsequence length
-                emb = self.conductor_fc(embeddings[:,i,:])
+                emb = self.conductor_fc(embeddings_list[i])
                 emb = self.tanh(emb)
             
                 l2_in = torch.cat((emb, previous), dim=1) # the current conductor embedding cu is concatenated with the previous output token to be used as the input
@@ -86,7 +94,7 @@ class HierarchicalDecoder(nn.Module):
 
                 previous = self.output_layer(h2)
              
-                previous = previous.squeeze()
+                previous = previous.squeeze(1)  # Remove sequence dimension but keep batch dimension
                 output_decoder.append(previous)
             outputs.extend(output_decoder)
             previous = output_decoder[-1]

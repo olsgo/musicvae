@@ -21,7 +21,10 @@ class Encoder(nn.Module):
        
         
     def forward(self, input_sequence):
-
+        # Ensure input is on the same device as the model
+        device = next(self.parameters()).device
+        if input_sequence.device != device:
+            input_sequence = input_sequence.to(device)
         
         # LSTM forward pass
         output, _ = self.lstm(input_sequence)
@@ -40,7 +43,6 @@ class Encoder(nn.Module):
 
         # Prevent gradient flowing through sampling during training because of randomness
         with torch.no_grad():
-           
             eps = torch.randn_like(sigma)
 
         
